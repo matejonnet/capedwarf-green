@@ -20,46 +20,53 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.api.cache.impl;
+package org.jboss.capedwarf.server.api.captcha.impl;
 
-import javax.cache.Cache;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Locale;
+import javax.enterprise.context.SessionScoped;
 
-import org.jboss.capedwarf.server.api.cache.CacheEntryLookup;
+import nl.captcha.Captcha;
+import nl.captcha.backgrounds.GradiatedBackgroundProducer;
 
 /**
- * Abstract CEL.
- *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class AbstractCacheEntryLookup implements CacheEntryLookup
+@SessionScoped
+public class SimpleCaptchaService extends AbstractCaptchaService
 {
-   protected Cache cache;
+   private static final long serialVersionUID = 1L;
 
-   protected abstract Object toImplementationId(Class<?> entryType, Object id);
+   private int widht = 200;
+   private int height = 40;
 
-   protected <T> T toEntity(Class<T> entryType, Object result)
+   private volatile Captcha captcha;
+
+   public void serveCaptcha(String id, Locale locale, String format, OutputStream out) throws IOException
    {
-      return entryType.cast(result);
+      captcha = new Captcha.Builder(widht, height)
+            .addText()
+            .addBackground(new GradiatedBackgroundProducer())
+            .gimp()
+            .addNoise()
+            .addBorder()
+            .build();
+      renderCaptcha(captcha.getImage(), format, out);
    }
 
-   public <T> T getCachedEntry(Class<T> entryType, Object id)
+   public boolean verifyCaptcha(String id, String value)
    {
-      if (entryType == null || id == null)
-         return null;
-
-      Object oid = toImplementationId(entryType, id);
-      if (oid == null)
-         return null;
-
-      Object result = cache.get(oid);
-      if (result == null)
-         return null;
-
-      return toEntity(entryType, result);
+      return captcha != null && captcha.isCorrect(value);
    }
 
-   public void setCache(Cache cache)
+   public void setWidht(int widht)
    {
-      this.cache = cache;
+      this.widht = widht;
+   }
+
+   public void setHeight(int height)
+   {
+      this.height = height;
    }
 }

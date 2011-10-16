@@ -23,7 +23,12 @@
 package org.jboss.capedwarf.server.api.io;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.zip.GZIPOutputStream;
 import javax.servlet.http.HttpServletResponse;
+
+import org.jboss.capedwarf.common.serialization.GzipOptionalSerializator;
 
 /**
  * Abstract byte[] handling service.
@@ -44,7 +49,7 @@ public abstract class AbstractBlobService implements BlobService
 
    public byte[] loadBytes(String key)
    {
-      return loadBytesInternal(key, 0, Long.MAX_VALUE);
+      return loadBytes(key, 0, Long.MAX_VALUE);
    }
 
    public byte[] loadBytes(String key, long startIndex, long endIndex)
@@ -59,33 +64,54 @@ public abstract class AbstractBlobService implements BlobService
 
    protected abstract byte[] loadBytesInternal(String key, long startIndex, long endIndex);
 
-   public void serveBytes(String key, HttpServletResponse response) throws IOException
+   public void serveBytes(String key, OutputStream outstream) throws IOException
    {
-      serveBytes(key, 0, response);
+      serveBytes(key, 0, outstream);
    }
 
-   public void serveBytes(String key, long start, HttpServletResponse response) throws IOException
+   public void serveBytes(String key, long start, OutputStream outstream) throws IOException
    {
-      serveBytes(key, start, -1, response);
+      serveBytes(key, start, Long.MAX_VALUE, outstream);
    }
 
-   public void serveBytes(String key, long start, long end, HttpServletResponse response) throws IOException
+   public void serveBytes(String key, long start, long end, OutputStream outstream) throws IOException
    {
-      if (key == null)
-         return;
-
-      serveBytesInternal(key, start, end, response);
+      byte[] bytes = loadBytes(key, start, end);
+      if (bytes != null)
+      {
+         if (GzipOptionalSerializator.isGzipDisabled())
+         {
+            outstream.write(bytes);
+         }
+         else
+         {
+            GZIPOutputStream gzip = new GZIPOutputStream(outstream);
+            gzip.write(bytes);
+            gzip.finish();
+         }
+      }
    }
 
-   protected abstract void serveBytesInternal(String key, long start, long end, HttpServletResponse response) throws IOException;
+   public void serveBytes(String key, long start, long end, HttpServletResponse respose) throws IOException
+   {
+      serveBytes(key, start, end, respose.getOutputStream());
+   }
 
    public String storeBytes(String mimeType, byte[] bytes) throws IOException
    {
       if (bytes == null)
          return null;
 
-      return storeBytesInternal(mimeType, bytes);
+      return storeBytesInternal(mimeType, ByteBuffer.wrap(bytes));
    }
 
-   protected abstract String storeBytesInternal(String mimeType, byte[] bytes) throws IOException;
+   public String storeBytes(String mimeType, ByteBuffer buffer) throws IOException
+   {
+      if (buffer == null)
+         return null;
+
+      return storeBytesInternal(mimeType, buffer);
+   }
+
+   protected abstract String storeBytesInternal(String mimeType, ByteBuffer buffer) throws IOException;
 }

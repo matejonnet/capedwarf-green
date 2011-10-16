@@ -20,31 +20,41 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.gae.cache;
+package org.jboss.capedwarf.server.api.domain;
 
-import org.datanucleus.cache.CachedPC;
-import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookup;
+import java.io.InputStream;
+import javax.persistence.MappedSuperclass;
 
 /**
- * DataNucleus CEL.
- *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class DNCacheEntryLookup extends AbstractCacheEntryLookup
+@MappedSuperclass
+public abstract class AbstractImage extends AbstractEntity
 {
-   @Override
-   protected <T> T toEntity(Class<T> entryType, Object result)
+   private String mimeType;
+   private long length;
+
+   public abstract void write(byte[] bytes) throws Exception;
+   public abstract void write(InputStream stream) throws Exception;
+   public abstract byte[] read(long start, long end) throws Exception;
+
+   public String getMimeType()
    {
-      CachedPC cpc = (CachedPC) result;
+      return mimeType;
+   }
 
-      // Check if we are fully loaded
-      int countLoadedFileds = 0;
-      for (boolean lf : cpc.getLoadedFields())
-         if (lf) countLoadedFileds++;
-      // We only have id loaded (best guess if we're loaded)
-      if (countLoadedFileds <= 1)
-         return null;
+   public void setMimeType(String mimeType)
+   {
+      this.mimeType = mimeType;
+   }
 
-      return entryType.cast(cpc.getPersistableObject());
+   public long getLength()
+   {
+      return length;
+   }
+
+   public void setLength(long length)
+   {
+      this.length = length;
    }
 }

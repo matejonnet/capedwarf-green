@@ -13,7 +13,6 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Formatter;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,14 +24,11 @@ import javax.validation.constraints.Size;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
-import org.apache.http.HttpVersion;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.conn.ClientConnectionManager;
-import org.apache.http.conn.scheme.PlainSocketFactory;
 import org.apache.http.conn.scheme.Scheme;
 import org.apache.http.conn.scheme.SchemeRegistry;
-import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.entity.ContentProducer;
 import org.apache.http.entity.EntityTemplate;
@@ -50,7 +46,9 @@ import org.jboss.capedwarf.common.io.ClosedInputStream;
 import org.jboss.capedwarf.common.serialization.BufferedSerializator;
 import org.jboss.capedwarf.common.serialization.ConverterUtils;
 import org.jboss.capedwarf.common.serialization.ElementTypeProvider;
+import org.jboss.capedwarf.common.serialization.Gzip;
 import org.jboss.capedwarf.common.serialization.GzipOptionalSerializator;
+import org.jboss.capedwarf.common.serialization.GzipType;
 import org.jboss.capedwarf.common.serialization.JSONAware;
 import org.jboss.capedwarf.common.serialization.JSONCollectionSerializator;
 import org.jboss.capedwarf.common.serialization.JSONSerializator;
@@ -76,8 +74,6 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    /** The environment */
    private volatile Environment env;   
 
-   private String endpointUrl;
-   
    private Configuration config;
 
    private boolean allowsStreaming;
@@ -86,28 +82,6 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    {
       if (config == null)
          throw new IllegalArgumentException("Null configuration");
-
-      endpointUrl = config.getHostName();
-      
-      int pos = endpointUrl.indexOf("://");
-      if (pos != -1)
-      {
-         // cut off after protocol spec
-         if (pos > 0)
-            endpointUrl = endpointUrl.substring(pos);
-      }
-      else if (pos == -1)
-      {
-         // prepend ://
-         endpointUrl = "://" + endpointUrl;
-      }
-      
-      // it must end with /client/
-      if (endpointUrl.endsWith("/") == false)
-         endpointUrl += "/";
-
-      endpointUrl += "client/";
-      
       this.config = config;
    }
 
@@ -131,24 +105,49 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       if (client == null)
       {
          HttpParams params = new BasicHttpParams();
-         HttpConnectionParams.setConnectionTimeout(params, 30 * (int)Constants.SECOND);
-         HttpProtocolParams.setVersion(params, HttpVersion.HTTP_1_1);
-         HttpProtocolParams.setContentCharset(params, "UTF-8");
+         HttpConnectionParams.setConnectionTimeout(params, config.getConnectionTimeout());
+         HttpProtocolParams.setVersion(params, config.getHttpVersion());
+         HttpProtocolParams.setContentCharset(params, config.getContentCharset());
 
          // Create and initialize scheme registry
          SchemeRegistry schemeRegistry = new SchemeRegistry();
-         schemeRegistry.register(new Scheme("http", PlainSocketFactory.getSocketFactory(), config.getPort()));
-         schemeRegistry.register(new Scheme("https", SSLSocketFactory.getSocketFactory(), config.getSslPort()));
+         schemeRegistry.register(new Scheme("http", config.getPlainFactory(), config.getPort()));
+         schemeRegistry.register(new Scheme("https", config.getSslFactory(), config.getSslPort()));
 
-         // Create an HttpClient with the ThreadSafeClientConnManager.
-         // This connection manager must be used if more than one thread will
-         // be using the HttpClient.
-         ClientConnectionManager ccm = new ThreadSafeClientConnManager(params, schemeRegistry);
+         ClientConnectionManager ccm = createClientConnectionManager(params, schemeRegistry);
 
-         client = new DefaultHttpClient(ccm, params);
+         client = createClient(ccm, params);
       }
 
       return client;
+   }
+
+   /**
+    * Create client connection manager.
+    *
+    * Create an HttpClient with the ThreadSafeClientConnManager.
+    * This connection manager must be used if more than one thread will
+    * be using the HttpClient.
+    *
+    * @param params the http params
+    * @param schemeRegistry the scheme registry
+    * @return new client connection manager
+    */
+   protected ClientConnectionManager createClientConnectionManager(HttpParams params, SchemeRegistry schemeRegistry)
+   {
+      return new ThreadSafeClientConnManager(params, schemeRegistry);
+   }
+
+   /**
+    * Create new http client.
+    *
+    * @param ccm the client connection manager
+    * @param params the http params
+    * @return new http client
+    */
+   protected HttpClient createClient(ClientConnectionManager ccm, HttpParams params)
+   {
+      return new DefaultHttpClient(ccm, params);
    }
 
    public synchronized void shutdown()
@@ -164,66 +163,120 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       }
    }
 
-   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable
+   public Object invoke(Object proxy, Method method, final Object[] args) throws Throwable
    {
       Class<?> declaringClass = method.getDeclaringClass();
       if (declaringClass == Object.class)
       {
          return null; // only handle ServerProxy methods
       }
-      if ("shutdown".equals(method.getName()) && ServerProxyHandle.class.equals(declaringClass))
+      if (ServerProxyHandle.class.equals(declaringClass))
       {
-         shutdown();
+         if ("setAllowsStreaming".equals(method.getName()))
+            setAllowsStreaming((Boolean)args[0]);
+         else if ("shutdown".equals(method.getName()))
+            shutdown();
+
          return null;
       }
 
-      QueryInfo query = createQuery(method, args);
+      final QueryInfo query = createQuery(method, args);
 
-      List<JSONAware> toJSON;
-      if (query.jsonAware)
-      {
-         toJSON = new ArrayList<JSONAware>();
-         for (Object arg : args)
-         {
-            if (JSONAware.class.isInstance(arg))
-            {
-               ValidationHelper.validate(arg);
-               toJSON.add(JSONAware.class.cast(arg));
-            }
-         }
-      }
-      else
-      {
-         toJSON = Collections.emptyList();
-      }
-
-      Result result = wrapResult(getContent(query, toJSON));
-      InputStream content = result.stream;
+      if (query.gzip == false)
+         GzipOptionalSerializator.disableGzip();
       try
       {
-         if (result.status != 200)
+         final ResultProducer rp;
+         if (query.jsonAware)
          {
-            packResponseError(method, content, result.status);
-         }
-         return toValue(method, content);
-      }
-      catch (Throwable t)
-      {
-         // Lets retry if we're over GAE limit
-         if (result.executionTime > 29 * 1000)
-         {
-            getEnv().log(Constants.TAG_CONNECTION, Level.CONFIG, "Retrying, hit GAE limit: " + (result.executionTime / 1000), null);
-            result = wrapResult(getContent(query, toJSON));
-            if (result.status != 200)
+            final List<JSONAware> toJSON = new ArrayList<JSONAware>();
+            for (Object arg : args)
             {
-               packResponseError(method, result.stream, result.status);
+               if (JSONAware.class.isInstance(arg))
+               {
+                  ValidationHelper.validate(arg);
+                  toJSON.add(JSONAware.class.cast(arg));
+               }
             }
-            return toValue(method, result.stream);
+            rp = new ResultProducer()
+            {
+               public Result run() throws Throwable
+               {
+                  return getContent(query, toJSON);
+               }
+            };
+         }
+         else if (query.directContent)
+         {
+            if (args[0] instanceof ContentProducer)
+            {
+               rp = new ResultProducer()
+               {
+                  public Result run() throws Throwable
+                  {
+                     return getResultWithContentProducer(query, (ContentProducer) args[0]);
+                  }
+               };
+            }
+            else if (args[0] instanceof HttpEntity)
+            {
+               rp = new ResultProducer()
+               {
+                  public Result run() throws Throwable
+                  {
+                     return getResultWithHttpEntity(query, (HttpEntity) args[0]);
+                  }
+               };
+            }
+            else
+            {
+               throw new IllegalArgumentException("Cannot create ResultProducer, illegal argument: " + Arrays.toString(args));
+            }
          }
          else
          {
-            throw t;
+            rp = new ResultProducer()
+            {
+               public Result run() throws Throwable
+               {
+                  return getResultWithHttpEntity(query, null);
+               }
+            };
          }
+
+         Result result = wrapResult(rp.run());
+         InputStream content = result.stream;
+         try
+         {
+            if (result.status != 200)
+            {
+               packResponseError(method, content, result.status);
+            }
+            return toValue(method, content);
+         }
+         catch (Throwable t)
+         {
+            // Lets retry if we're over GAE limit
+            if (result.executionTime > 29 * 1000)
+            {
+               getEnv().log(Constants.TAG_CONNECTION, Level.CONFIG, "Retrying, hit GAE limit: " + (result.executionTime / 1000), null);
+               result = wrapResult(rp.run());
+               if (result.status != 200)
+               {
+                  packResponseError(method, result.stream, result.status);
+               }
+               return toValue(method, result.stream);
+            }
+            else
+            {
+               throw t;
+            }
+         }
+      }
+      finally
+      {
+         if (query.gzip == false)
+            GzipOptionalSerializator.enableGzip();
       }
    }
 
@@ -263,14 +316,10 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    @SuppressWarnings({"unchecked"})
    protected Result getContent(QueryInfo qi, final List<JSONAware> args) throws Throwable
    {
-      String link = "http" + (getSecure(qi) ? "s" : "") + endpointUrl + (qi.secure ? "secure/" : "") + qi.query;
-      if (config.isDebugLogging())
-         getEnv().log(Constants.TAG_CONNECTION, Level.INFO, "URL: " + link, null);
-
-      HttpPost httppost = new HttpPost(link);
+      ContentProducer cp = null;
       if (qi.jsonAware && args.isEmpty() == false)
       {
-         ContentProducer cp = new ContentProducer()
+         cp = new ContentProducer()
          {
             public void writeTo(OutputStream outputStream) throws IOException
             {
@@ -305,8 +354,23 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                outputStream.flush();
             }
          };
+      }
+      return getResultWithContentProducer(qi, cp);
+   }
 
-         HttpEntity entity;
+   /**
+    * Get content as a input stream.
+    *
+    * @param qi   the additional client query info
+    * @param cp   the content producer
+    * @return the response input stream
+    * @throws Throwable for any error
+    */
+   protected Result getResultWithContentProducer(QueryInfo qi, ContentProducer cp) throws Throwable
+   {
+      HttpEntity entity = null;
+      if (cp != null)
+      {
          if (allowsStreaming)
          {
             entity = new EntityTemplate(cp);
@@ -317,8 +381,28 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
             cp.writeTo(baos);
             entity = new ByteArrayEntity(baos.toByteArray());
          }
-         httppost.setEntity(entity);
       }
+      return getResultWithHttpEntity(qi, entity);
+   }
+
+   /**
+    * Get content as a input stream.
+    *
+    * @param qi   the additional client query info
+    * @param entity the http entity
+    * @return the response input stream
+    * @throws Throwable for any error
+    */
+   protected Result getResultWithHttpEntity(QueryInfo qi, HttpEntity entity) throws Throwable
+   {
+      String link = config.getEndpoint(qi.secure) + qi.query;
+      if (config.isDebugLogging())
+         getEnv().log(Constants.TAG_CONNECTION, Level.INFO, "URL: " + link, null);
+
+      HttpPost httppost = new HttpPost(link);
+
+      if (entity != null)
+         httppost.setEntity(entity);
 
       if (qi.secure)
       {
@@ -351,14 +435,14 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    }
 
    /**
-    * Get secure.
+    * Get ssl.
     *
     * @param qi the query info
-    * @return true if secure, false otherwise
+    * @return true if ssl, false otherwise
     */
-   private boolean getSecure(QueryInfo qi)
+   protected boolean getSSL(QueryInfo qi)
    {
-      return config.isDebugMode() == false && qi.secure;
+      return (config.isDebugMode() == false && qi.secure) || config.isStrictSSL();
    }
 
    /**
@@ -378,6 +462,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          value.query = query.value();
          value.jsonAware = query.jsonAware();
          value.secure = method.isAnnotationPresent(Secure.class);
+         value.gzip = isGzip(method);
       }
       else
       {
@@ -404,6 +489,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          {
             boolean type = false;
             boolean jsonAware = false;
+            boolean directContent = false;
             StringBuilder builder = new StringBuilder();
             char[] chars = methodName.toCharArray();
             for (char ch : chars)
@@ -426,13 +512,25 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                Annotation[] ppa = pa[i];
                if (ppa == null || ppa.length == 0)
                {
-                  if (JSONAware.class.isAssignableFrom(pt[i]) == false)
-                     throw new IllegalArgumentException("Illegal method parameter, missing QueryParameter? - " + method);
-
                   if (notNullChecks[i] == false)
-                     throw new IllegalArgumentException("Null JSON aware parameter: " + i);
+                     throw new IllegalArgumentException("Null non-query (JSON, ...) aware parameter: " + i);
 
-                  jsonAware = true;
+                  if (JSONAware.class.isAssignableFrom(pt[i]) == false)
+                  {
+                     if (ContentProducer.class.isAssignableFrom(pt[i]) || HttpEntity.class.isAssignableFrom(pt[i]))
+                     {
+                        if (pt.length > 1)
+                           throw new IllegalArgumentException("Only 1 non-JSONAware argument allowed: " + Arrays.toString(pt));
+
+                        directContent = true;
+                     }
+                     else
+                     {
+                        throw new IllegalArgumentException("Illegal method parameter, missing QueryParameter? - " + method);
+                     }
+                  }
+
+                  jsonAware = jsonAware || (JSONAware.class.isAssignableFrom(pt[i]));
                }
                else
                {
@@ -463,7 +561,9 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
             value = new QueryInfo();
             value.query = builder.toString();
             value.jsonAware = jsonAware;
+            value.directContent = directContent;
             value.secure = method.isAnnotationPresent(Secure.class);
+            value.gzip = isGzip(method);
             queryCache.put(key, value);
          }
       }
@@ -471,8 +571,22 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       QueryInfo result = new QueryInfo();
       result.query = new Formatter().format(value.query, args).toString();
       result.jsonAware = value.jsonAware;
+      result.directContent = value.directContent;
       result.secure = value.secure;
+      result.gzip = value.gzip;
       return result;
+   }
+
+   /**
+    * Do we use gzip.
+    *
+    * @param method the method
+    * @return true if gzip, false otherwise
+    */
+   protected boolean isGzip(Method method)
+   {
+      Gzip gzip = method.getAnnotation(Gzip.class);
+      return (gzip == null) || (gzip.value() == GzipType.ENABLE);
    }
 
    /**
@@ -527,6 +641,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
     */
    protected Object toValue(Method method, InputStream content) throws Throwable
    {
+      boolean closeOnReturn = true;
       content = new ClosedInputStream(content);
       try
       {
@@ -564,6 +679,11 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          {
             return JSONSerializator.OPTIONAL_GZIP_BUFFERED.deserialize(content, rt);
          }
+         else if (InputStream.class.isAssignableFrom(rt))
+         {
+            closeOnReturn = false;
+            return GzipOptionalSerializator.wrap(content);
+         }
          else
          {
             String value = convertStreamToString(content);
@@ -574,7 +694,8 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       {
          try
          {
-            content.close();
+            if (closeOnReturn)
+               content.close();
          }
          catch (IOException ignored)
          {
@@ -619,7 +740,9 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    {
       private String query;
       private boolean jsonAware;
+      private boolean directContent;
       private boolean secure;
+      private boolean gzip;
    }
 
    protected static class Result
@@ -642,5 +765,10 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       {
          this.status = status;
       }
+   }
+
+   protected interface ResultProducer
+   {
+      Result run() throws Throwable;
    }
 }

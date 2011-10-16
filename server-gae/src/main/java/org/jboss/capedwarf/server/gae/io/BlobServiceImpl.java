@@ -60,20 +60,23 @@ public class BlobServiceImpl extends AbstractBlobService
       return blobstoreService.fetchData(blobKey, startIndex, endIndex);
    }
 
-   protected void serveBytesInternal(String key, long start, long end, HttpServletResponse response) throws IOException
+   /**
+    * Note: can gzip be used unless you decorate response?
+    */
+   public void serveBytes(String key, long start, long end, HttpServletResponse respose) throws IOException
    {
       BlobKey blobKey = new BlobKey(key);
-      ByteRange range = (end >= 0) ? new ByteRange(start, end) : new ByteRange(start);
-      blobstoreService.serve(blobKey, range, response);
+      ByteRange range = (end == Long.MAX_VALUE) ? new ByteRange(start) : new ByteRange(start, end);
+      blobstoreService.serve(blobKey, range, respose);
    }
 
-   protected String storeBytesInternal(String mimeType, byte[] bytes) throws IOException
+   protected String storeBytesInternal(String mimeType, ByteBuffer buffer) throws IOException
    {
       AppEngineFile file = fileService.createNewBlobFile(mimeType);
       FileWriteChannel writeChannel = fileService.openWriteChannel(file, true);
       try
       {
-         writeChannel.write(ByteBuffer.wrap(bytes));
+         writeChannel.write(buffer);
       }
       finally
       {

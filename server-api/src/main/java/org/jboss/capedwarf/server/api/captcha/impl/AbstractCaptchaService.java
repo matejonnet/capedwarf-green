@@ -20,31 +20,26 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.gae.cache;
+package org.jboss.capedwarf.server.api.captcha.impl;
 
-import org.datanucleus.cache.CachedPC;
-import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookup;
+import java.awt.image.RenderedImage;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.Serializable;
+import javax.imageio.ImageIO;
+
+import org.jboss.capedwarf.server.api.captcha.CaptchaService;
 
 /**
- * DataNucleus CEL.
+ * Abstract CAPTCHA service.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class DNCacheEntryLookup extends AbstractCacheEntryLookup
+public abstract class AbstractCaptchaService implements CaptchaService, Serializable
 {
-   @Override
-   protected <T> T toEntity(Class<T> entryType, Object result)
+   protected void renderCaptcha(RenderedImage image, String format, OutputStream out) throws IOException
    {
-      CachedPC cpc = (CachedPC) result;
-
-      // Check if we are fully loaded
-      int countLoadedFileds = 0;
-      for (boolean lf : cpc.getLoadedFields())
-         if (lf) countLoadedFileds++;
-      // We only have id loaded (best guess if we're loaded)
-      if (countLoadedFileds <= 1)
-         return null;
-
-      return entryType.cast(cpc.getPersistableObject());
+      ImageIO.write(image, format, out);
+      out.flush();
    }
 }

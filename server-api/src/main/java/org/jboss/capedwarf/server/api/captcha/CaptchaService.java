@@ -20,31 +20,36 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.gae.cache;
+package org.jboss.capedwarf.server.api.captcha;
 
-import org.datanucleus.cache.CachedPC;
-import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookup;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Locale;
 
 /**
- * DataNucleus CEL.
+ * CAPTCHA service.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class DNCacheEntryLookup extends AbstractCacheEntryLookup
+public interface CaptchaService
 {
-   @Override
-   protected <T> T toEntity(Class<T> entryType, Object result)
-   {
-      CachedPC cpc = (CachedPC) result;
+   /**
+    * Serve CAPTCHA.
+    *
+    * @param id the current id
+    * @param locale the current locale
+    * @param format the format
+    * @param out output stream
+    * @throws IOException for any I/O error
+    */
+   void serveCaptcha(String id, Locale locale, String format, OutputStream out) throws IOException;
 
-      // Check if we are fully loaded
-      int countLoadedFileds = 0;
-      for (boolean lf : cpc.getLoadedFields())
-         if (lf) countLoadedFileds++;
-      // We only have id loaded (best guess if we're loaded)
-      if (countLoadedFileds <= 1)
-         return null;
-
-      return entryType.cast(cpc.getPersistableObject());
-   }
+   /**
+    * Verify CAPTCHA.
+    *
+    * @param id the previous id
+    * @param captcha the captcha value
+    * @return true if valid, false otherwise
+    */
+   boolean verifyCaptcha(String id, String captcha);
 }

@@ -20,31 +20,35 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.gae.cache;
+package org.jboss.capedwarf.connect.io;
 
-import org.datanucleus.cache.CachedPC;
-import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookup;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import org.apache.http.entity.ContentProducer;
+import org.jboss.capedwarf.common.serialization.AbstractSerializator;
 
 /**
- * DataNucleus CEL.
+ * Content producer serializator.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class DNCacheEntryLookup extends AbstractCacheEntryLookup
+public class ContentProducerSerializator extends AbstractSerializator
 {
-   @Override
-   protected <T> T toEntity(Class<T> entryType, Object result)
+   public boolean isValid(Class<?> clazz)
    {
-      CachedPC cpc = (CachedPC) result;
+      return ContentProducer.class.isAssignableFrom(clazz);
+   }
 
-      // Check if we are fully loaded
-      int countLoadedFileds = 0;
-      for (boolean lf : cpc.getLoadedFields())
-         if (lf) countLoadedFileds++;
-      // We only have id loaded (best guess if we're loaded)
-      if (countLoadedFileds <= 1)
-         return null;
+   public void serialize(Object instance, OutputStream out) throws IOException
+   {
+      ContentProducer cp = (ContentProducer) instance;
+      cp.writeTo(out);
+   }
 
-      return entryType.cast(cpc.getPersistableObject());
+   public <T> T deserialize(InputStream stream, Class<T> clazz) throws IOException
+   {
+      throw new UnsupportedOperationException("Cannot deserialize ContentProducer instance.");
    }
 }

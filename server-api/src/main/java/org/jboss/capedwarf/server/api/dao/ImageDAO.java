@@ -20,31 +20,15 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.gae.cache;
+package org.jboss.capedwarf.server.api.dao;
 
-import org.datanucleus.cache.CachedPC;
-import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookup;
+import org.jboss.capedwarf.server.api.domain.AbstractImage;
 
 /**
- * DataNucleus CEL.
+ * Generic image DAO.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class DNCacheEntryLookup extends AbstractCacheEntryLookup
+public interface ImageDAO<T extends AbstractImage> extends GenericDAO<T>
 {
-   @Override
-   protected <T> T toEntity(Class<T> entryType, Object result)
-   {
-      CachedPC cpc = (CachedPC) result;
-
-      // Check if we are fully loaded
-      int countLoadedFileds = 0;
-      for (boolean lf : cpc.getLoadedFields())
-         if (lf) countLoadedFileds++;
-      // We only have id loaded (best guess if we're loaded)
-      if (countLoadedFileds <= 1)
-         return null;
-
-      return entryType.cast(cpc.getPersistableObject());
-   }
 }

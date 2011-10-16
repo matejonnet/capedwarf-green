@@ -20,31 +20,35 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.gae.cache;
+package org.jboss.capedwarf.connect.io;
 
-import org.datanucleus.cache.CachedPC;
-import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookup;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.zip.GZIPOutputStream;
+
+import org.apache.http.entity.ContentProducer;
+import org.jboss.capedwarf.common.serialization.GzipOptionalSerializator;
 
 /**
- * DataNucleus CEL.
+ * GZIP Content producer.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public abstract class DNCacheEntryLookup extends AbstractCacheEntryLookup
+public abstract class GzipContentProducer implements ContentProducer
 {
-   @Override
-   protected <T> T toEntity(Class<T> entryType, Object result)
+   public void writeTo(OutputStream outstream) throws IOException
    {
-      CachedPC cpc = (CachedPC) result;
-
-      // Check if we are fully loaded
-      int countLoadedFileds = 0;
-      for (boolean lf : cpc.getLoadedFields())
-         if (lf) countLoadedFileds++;
-      // We only have id loaded (best guess if we're loaded)
-      if (countLoadedFileds <= 1)
-         return null;
-
-      return entryType.cast(cpc.getPersistableObject());
+      if (GzipOptionalSerializator.isGzipDisabled())
+      {
+         doWriteTo(outstream);
+      }
+      else
+      {
+         GZIPOutputStream gzip = new GZIPOutputStream(outstream);
+         doWriteTo(gzip);
+         gzip.finish();
+      }
    }
+
+   protected abstract void doWriteTo(OutputStream outstream) throws IOException;
 }
