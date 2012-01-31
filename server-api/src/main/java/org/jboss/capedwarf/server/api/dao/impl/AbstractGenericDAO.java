@@ -22,20 +22,25 @@
 
 package org.jboss.capedwarf.server.api.dao.impl;
 
-import org.jboss.capedwarf.jpa.ProxyingEnum;
-import org.jboss.capedwarf.server.api.dao.GenericDAO;
-import org.jboss.capedwarf.server.api.domain.AbstractEntity;
-import org.jboss.capedwarf.server.api.persistence.EMInjector;
-import org.jboss.capedwarf.server.api.persistence.Proxying;
-import org.jboss.capedwarf.server.api.tx.TransactionPropagationType;
-import org.jboss.capedwarf.server.api.tx.Transactional;
-
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Collection;
+import java.util.List;
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
-import java.util.Collection;
-import java.util.List;
+
+import org.jboss.capedwarf.jpa.ProxyingEnum;
+import org.jboss.capedwarf.server.api.dao.GenericDAO;
+import org.jboss.capedwarf.server.api.dao.StatelessDAO;
+import org.jboss.capedwarf.server.api.domain.AbstractEntity;
+import org.jboss.capedwarf.server.api.persistence.EMInjector;
+import org.jboss.capedwarf.server.api.persistence.Proxying;
+import org.jboss.capedwarf.server.api.persistence.StatelessAdapterFactory;
+import org.jboss.capedwarf.server.api.tx.TransactionPropagationType;
+import org.jboss.capedwarf.server.api.tx.Transactional;
 
 /**
  * Abstract generic DAO.
@@ -46,11 +51,18 @@ import java.util.List;
 public abstract class AbstractGenericDAO<T extends AbstractEntity> implements GenericDAO<T>
 {
    private EMInjector emInjector;
+   private StatelessAdapterFactory statelessAdapterFactory;
 
    @Inject
    public void setEmInjector(EMInjector emInjector)
    {
       this.emInjector = emInjector;
+   }
+
+   @Inject
+   public void setStatelessAdapterFactory(StatelessAdapterFactory statelessAdapterFactory)
+   {
+      this.statelessAdapterFactory = statelessAdapterFactory;
    }
 
    protected abstract Class<T> entityClass();
@@ -134,9 +146,23 @@ public abstract class AbstractGenericDAO<T extends AbstractEntity> implements Ge
       if (id == null || id <= 0)
          throw new IllegalArgumentException("Illegal id: " + id);
 
+      return internalDelete(id);
+   }
+
+   protected int internalDelete(Long id)
+   {
       Query query = getEM().createQuery("delete from " + entityClass().getSimpleName() + " e where e.id = :eid");
       query.setParameter("eid", id);
       return query.executeUpdate();
+   }
+
+   protected int cascadeDelete(Long id)
+   {
+      T entity = find(id);
+      if (entity != null)
+         internalDelete(entity);
+
+      return 1; // cannot count cascades
    }
 
    @Transactional
@@ -145,7 +171,12 @@ public abstract class AbstractGenericDAO<T extends AbstractEntity> implements Ge
       if (entity == null)
          throw new IllegalArgumentException("Null entity");
 
-      getEM().remove(entity);      
+      internalDelete(entity);
+   }
+
+   protected void internalDelete(T entity)
+   {
+      getEM().remove(entity);
    }
 
    @Transactional(TransactionPropagationType.SUPPORTS)
@@ -172,5 +203,47 @@ public abstract class AbstractGenericDAO<T extends AbstractEntity> implements Ge
       EntityManager em = getEM();
       Query query = em.createQuery("select e from " + entityClass().getSimpleName() + " e");
       return query.getResultList();
+   }
+
+   @SuppressWarnings({"unchecked"})
+   @Transactional(TransactionPropagationType.REQUIRED)
+   @Proxying(ProxyingEnum.DISABLE)
+   public StatelessDAO<T> statelessView(final boolean autoClose)
+   {
+      return (StatelessDAO<T>) Proxy.newProxyInstance(
+            getClass().getClassLoader(),
+            new Class[]{StatelessDAO.class},
+            new InvocationHandler()
+            {
+               private StatelessDAO<T> delegate;
+
+               /**
+                * Lazy get delegate.
+                *
+                * @return the delegate
+                */
+               private synchronized StatelessDAO<T> getDelegate()
+               {
+                  if (delegate == null)
+                     delegate = new StatelessAdapter2DAOBridge<T>(statelessAdapterFactory.createStatelessAdapter(getEM()));
+
+                  return delegate;
+               }
+
+               public Object invoke(Object proxy, Method method, Object[] args) throws Throwable
+               {
+                  StatelessDAO<T> bridge = getDelegate();
+                  try
+                  {
+                     return method.invoke(bridge, args);
+                  }
+                  finally
+                  {
+                     if (autoClose)
+                        bridge.close();
+                  }
+               }
+            }
+      );
    }
 }

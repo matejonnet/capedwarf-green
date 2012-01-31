@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2011, Red Hat Middleware LLC, and individual contributors
+ * Copyright 2011, Red Hat, Inc., and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -20,22 +20,26 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.api.quilifiers;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-import javax.inject.Qualifier;
+package org.jboss.capedwarf.server.api.io;
 
 /**
- * Marks current request instance.
- *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-@Qualifier
-@Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface Current
+public interface BlobCache
 {
+   /**
+    * Get bytes.
+    *
+    * @param key the key
+    * @return bytes or null if not found
+    */
+   byte[] get(String key);
+
+   /**
+    * Put bytes.
+    *
+    * @param key the key
+    * @param bytes the byes
+    */
+   void put(String key, byte[] bytes);
 }

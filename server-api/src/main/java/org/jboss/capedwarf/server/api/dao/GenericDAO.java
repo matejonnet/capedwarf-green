@@ -86,4 +86,12 @@ public interface GenericDAO<T extends AbstractEntity>
     * @return all entities
     */
    List<T> findAll();
+
+   /**
+    * Get stateless view.
+    *
+    * @param autoClose shoould we auto close dao
+    * @return get stateless view
+    */
+   StatelessDAO<T> statelessView(boolean autoClose);
 }

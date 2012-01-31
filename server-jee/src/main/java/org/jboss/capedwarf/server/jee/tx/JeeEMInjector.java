@@ -22,70 +22,20 @@
 
 package org.jboss.capedwarf.server.jee.tx;
 
-import java.io.Serializable;
-import java.util.concurrent.atomic.AtomicBoolean;
-import javax.annotation.PostConstruct;
-import javax.enterprise.event.Event;
-import javax.inject.Inject;
 import javax.persistence.EntityManager;
-import javax.persistence.EntityManagerFactory;
 import javax.persistence.PersistenceContext;
-import javax.persistence.PersistenceUnit;
-
-import org.jboss.capedwarf.jpa.EntityManagerProvider;
-import org.jboss.capedwarf.jpa2.NewProxyingEntityManager;
-import org.jboss.capedwarf.server.api.lifecycle.AfterImpl;
-import org.jboss.capedwarf.server.api.lifecycle.Notification;
-import org.jboss.capedwarf.server.api.persistence.EMFNotification;
-import org.jboss.capedwarf.server.api.persistence.EMInjector;
 
 /**
  * JEE EM injector.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-public class JeeEMInjector implements EMInjector, Serializable
+public class JeeEMInjector extends ManagedEMInjector
 {
    @PersistenceContext private transient EntityManager em;
-   @PersistenceUnit private transient EntityManagerFactory emf;
 
-   private transient Event<Notification<EntityManagerFactory>> produceEvent;
-   private static AtomicBoolean emitted = new AtomicBoolean(false);
-
-   @PostConstruct
-   public void init()
+   protected EntityManager getInjectedEntityManager()
    {
-      // fire this only once
-      if (emitted.compareAndSet(false, true))
-      {
-         produceEvent.select(new AfterImpl()).fire(new EMFNotification(emf));
-      }
-   }
-
-   public EntityManager getEM()
-   {
-      return new NewProxyingEntityManager(em)
-      {
-         protected EntityManagerProvider getProvider()
-         {
-            return new EntityManagerProvider()
-            {
-               public EntityManager getEntityManager()
-               {
-                  return em;
-               }
-
-               public void close(EntityManager em)
-               {
-               }
-            };
-         }
-      };
-   }
-
-   @Inject
-   public void setProduceEvent(Event<Notification<EntityManagerFactory>> produceEvent)
-   {
-      this.produceEvent = produceEvent;
+      return em;
    }
 }

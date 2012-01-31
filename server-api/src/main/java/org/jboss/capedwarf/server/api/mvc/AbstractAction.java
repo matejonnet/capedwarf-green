@@ -84,7 +84,7 @@ public abstract class AbstractAction extends AbstractRequestHandler
     *
     * @param req the request
     * @param name the parameter name
-    * @return parsed value or default if no such value
+    * @return parsed value or exception if no such value
     */
    protected static long parseLong(HttpServletRequest req, String name)
    {
@@ -93,16 +93,58 @@ public abstract class AbstractAction extends AbstractRequestHandler
    }
 
    /**
+    * Parse long parameter.
+    *
+    * @param req the request
+    * @param name the parameter name
+    * @param defaultValue the default value
+    * @return parsed value or exception if no such value
+    */
+   protected static long parseLong(HttpServletRequest req, String name, long defaultValue)
+   {
+      String value = getParameter(req, name, false);
+      return (value != null) ? Long.parseLong(value) : defaultValue;
+   }
+
+   /**
     * Parse int parameter.
     *
     * @param req the request
     * @param name the parameter name
-    * @return parsed value or default if no such value
+    * @return parsed value or exception if no such value
     */
    protected static int parseInt(HttpServletRequest req, String name)
    {
       String value = getParameter(req, name);
       return Integer.parseInt(value);
+   }
+
+   /**
+    * Parse int.
+    *
+    * @param req the request
+    * @param name the parameter name
+    * @param defaultValue the default value
+    * @return parsed value or default if no such value
+    */
+   protected int parseInt(HttpServletRequest req, String name, int defaultValue)
+   {
+      String value = req.getParameter(name);
+      return (value != null) ? Integer.parseInt(value) : defaultValue;
+   }
+
+   /**
+    * Parse boolean.
+    *
+    * @param req the request
+    * @param name the parameter name
+    * @param defaultValue the default value
+    * @return parsed booelan value or default if no such parameter
+    */
+   protected boolean parseBoolean(HttpServletRequest req, String name, boolean defaultValue)
+   {
+      String value = req.getParameter(name);
+      return (value != null) ? Boolean.parseBoolean(value) : defaultValue;
    }
 
    /**

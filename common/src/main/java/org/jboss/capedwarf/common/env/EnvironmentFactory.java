@@ -1,5 +1,7 @@
 package org.jboss.capedwarf.common.env;
 
+import java.util.ServiceLoader;
+
 /**
  * The environment utils.
  *
@@ -37,23 +39,36 @@ public class EnvironmentFactory
     */
    public static Environment getEnvironment()
    {
-      Environment tmp = env;
-      if (tmp == null)
-      {
-         try
-         {
-            ClassLoader cl = Environment.class.getClassLoader();
-            // let's first try the client side env
-            Class clazz = cl.loadClass("org.jboss.capedwarf.client.server.AndroidEnvironment");
-            Environment environment = (Environment) clazz.newInstance();
-            environment.touch(); // test
-            env = environment;
-            return env;
-         }
-         catch (Throwable ignored)
-         {
-         }
+      return getEnvironment(Environment.class.getClassLoader());
+   }
 
+   /**
+    * Get environment.
+    *
+    * @param cl the classloader to do the lookup
+    * @return the environment
+    */
+   public static Environment getEnvironment(ClassLoader cl)
+   {
+      if (env == null)
+      {
+         if (cl == null)
+            cl = Environment.class.getClassLoader();
+
+         ServiceLoader<Environment> envs = ServiceLoader.load(Environment.class, cl);
+         for (Environment e : envs)
+         {
+            try
+            {
+               e.touch(); // test
+               env = e;
+               return env;
+            }
+            catch (Throwable ignored)
+            {
+            }
+         }
+         // fall back to gae / simple env
          env = new GAEEnvironment();
       }
       return env;

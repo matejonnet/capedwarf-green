@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.logging.Level;
 import javax.validation.constraints.Size;
 
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -43,6 +44,7 @@ import org.jboss.capedwarf.common.env.Environment;
 import org.jboss.capedwarf.common.env.EnvironmentFactory;
 import org.jboss.capedwarf.common.env.Secure;
 import org.jboss.capedwarf.common.io.ClosedInputStream;
+import org.jboss.capedwarf.common.io.FixedLengthInputStream;
 import org.jboss.capedwarf.common.serialization.BufferedSerializator;
 import org.jboss.capedwarf.common.serialization.ConverterUtils;
 import org.jboss.capedwarf.common.serialization.ElementTypeProvider;
@@ -163,7 +165,19 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       }
    }
 
-   public Object invoke(Object proxy, Method method, final Object[] args) throws Throwable
+   public Object invoke(Object proxy, Method method, Object[] args) throws Throwable
+   {
+      try
+      {
+         return doInvoke(proxy, method, args);
+      }
+      finally
+      {
+         HttpHeaders.clear();
+      }
+   }
+
+   protected Object doInvoke(Object proxy, Method method, final Object[] args) throws Throwable
    {
       Class<?> declaringClass = method.getDeclaringClass();
       if (declaringClass == Object.class)
@@ -182,8 +196,10 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
 
       final QueryInfo query = createQuery(method, args);
 
-      if (query.gzip == false)
+      final boolean isGzipEnabled = GzipOptionalSerializator.isGzipDisabled() == false;
+      if (query.gzip == false && isGzipEnabled)
          GzipOptionalSerializator.disableGzip();
+
       try
       {
          final ResultProducer rp;
@@ -206,25 +222,26 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                }
             };
          }
-         else if (query.directContent)
+         else if (query.directContent >= 0)
          {
-            if (args[0] instanceof ContentProducer)
+            final int index = query.directContent;
+            if (args[index] instanceof ContentProducer)
             {
                rp = new ResultProducer()
                {
                   public Result run() throws Throwable
                   {
-                     return getResultWithContentProducer(query, (ContentProducer) args[0]);
+                     return getResultWithContentProducer(query, (ContentProducer) args[index]);
                   }
                };
             }
-            else if (args[0] instanceof HttpEntity)
+            else if (args[index] instanceof HttpEntity)
             {
                rp = new ResultProducer()
                {
                   public Result run() throws Throwable
                   {
-                     return getResultWithHttpEntity(query, (HttpEntity) args[0]);
+                     return getResultWithHttpEntity(query, (HttpEntity) args[index]);
                   }
                };
             }
@@ -252,7 +269,14 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
             {
                packResponseError(method, content, result.status);
             }
-            return toValue(method, content);
+            FixedLengthInputStream fis = new FixedLengthInputStream(content, result.contentLength);
+            Object retVal;
+            retVal = toValue(method, fis);
+            if (retVal instanceof InputStream)
+            {
+               return new ProgressInputStream((InputStream) retVal, fis);
+            }
+            return retVal;
          }
          catch (Throwable t)
          {
@@ -265,7 +289,15 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                {
                   packResponseError(method, result.stream, result.status);
                }
-               return toValue(method, result.stream);
+               FixedLengthInputStream fis = new FixedLengthInputStream(result.stream, result.contentLength);
+               Object retVal;
+               retVal = toValue(method, fis);
+               if (retVal instanceof InputStream)
+               {
+                  return new ProgressInputStream((InputStream) retVal, fis);
+               }
+               return retVal;
+
             }
             else
             {
@@ -275,7 +307,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       }
       finally
       {
-         if (query.gzip == false)
+         if (query.gzip == false && isGzipEnabled)
             GzipOptionalSerializator.enableGzip();
       }
    }
@@ -404,6 +436,11 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       if (entity != null)
          httppost.setEntity(entity);
 
+      for (Header header : HttpHeaders.getHeaders())
+      {
+         httppost.addHeader(header);
+      }
+
       if (qi.secure)
       {
          Environment env = EnvironmentFactory.getEnvironment();
@@ -425,6 +462,9 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          // invoke the post / request
          HttpResponse response = getClient().execute(httppost);
          result.status = response.getStatusLine().getStatusCode();
+         Header h = response.getFirstHeader("Content-Length");
+         if (h != null)
+            result.contentLength = Long.parseLong(h.getValue());
          result.stream = response.getEntity().getContent();
       }
       finally
@@ -489,7 +529,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          {
             boolean type = false;
             boolean jsonAware = false;
-            boolean directContent = false;
+            int directContent = -1;
             StringBuilder builder = new StringBuilder();
             char[] chars = methodName.toCharArray();
             for (char ch : chars)
@@ -519,10 +559,10 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                   {
                      if (ContentProducer.class.isAssignableFrom(pt[i]) || HttpEntity.class.isAssignableFrom(pt[i]))
                      {
-                        if (pt.length > 1)
+                        if (directContent >= 0)
                            throw new IllegalArgumentException("Only 1 non-JSONAware argument allowed: " + Arrays.toString(pt));
 
-                        directContent = true;
+                        directContent = i;
                      }
                      else
                      {
@@ -531,6 +571,10 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                   }
 
                   jsonAware = jsonAware || (JSONAware.class.isAssignableFrom(pt[i]));
+
+                  if (jsonAware && directContent >= 0)
+                     throw new IllegalArgumentException("Cannot have both - JSON and streaming: " + Arrays.toString(pt));
+
                }
                else
                {
@@ -740,7 +784,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    {
       private String query;
       private boolean jsonAware;
-      private boolean directContent;
+      private int directContent = -1;
       private boolean secure;
       private boolean gzip;
    }
@@ -750,7 +794,8 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       private int status;
       private InputStream stream;
       private long executionTime;
-
+      private long contentLength = -1;
+      
       private Result()
       {
          executionTime = System.currentTimeMillis();

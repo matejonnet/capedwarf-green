@@ -47,7 +47,7 @@
     <version.javax.cache>1.0-dev-2</version.javax.cache>
     <version.javax.mail>1.4</version.javax.mail>
     <version.javax.jpa2>1.0.0.Final</version.javax.jpa2>
-    <version.jcaptcha>1.0</version.jcaptcha>
+    <version.jcaptcha>1.0-RC6</version.jcaptcha>
     <version.simplecaptcha>1.1.1-GA-Patch01</version.simplecaptcha>
     <version.recaptcha>0.0.7</version.recaptcha>
     <version.org.datanucleus.core>1.1.5</version.org.datanucleus.core>
@@ -55,6 +55,7 @@
     <version.org.datanucleus.jpa.spec>1.1.1</version.org.datanucleus.jpa.spec>
     <version.org.datanucleus.jta>1.1.1</version.org.datanucleus.jta>
     <version.org.infinispan>5.0.0.FINAL</version.org.infinispan>
+    <version.org.hibernate>4.0.0.CR2</version.org.hibernate>
     <version.org.apache.http>4.0.3</version.org.apache.http>
     <version.junit>4.7</version.junit>
     <version.arquillian>1.0.0.CR1</version.arquillian>
@@ -279,12 +280,56 @@
 
         <dependency>
             <groupId>com.octo.captcha</groupId>
-            <artifactId>jcaptcha</artifactId>
+            <artifactId>jcaptcha-all</artifactId>
             <version>${version.jcaptcha}</version>
             <exclusions>
                 <exclusion>
                     <groupId>javax.servlet</groupId>
                     <artifactId>servlet-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>quartz</groupId>
+                    <artifactId>quartz</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>commons-dbcp</groupId>
+                    <artifactId>commons-dbcp</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>commons-pool</groupId>
+                    <artifactId>commons-pool</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>xerces</groupId>
+                    <artifactId>xercesImpl</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>xerces</groupId>
+                    <artifactId>xmlParserAPIs</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>hsqldb</groupId>
+                    <artifactId>hsqldb</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>commons-collections</groupId>
+                    <artifactId>commons-collections</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>net.sf.ehcache</groupId>
+                    <artifactId>ehcache</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>concurrent</groupId>
+                    <artifactId>concurrent</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.springframework</groupId>
+                    <artifactId>spring</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -322,7 +367,7 @@
       </dependency>
 
       <dependency>
-           <groupId>com.google.appengine</groupId>
+           <groupId>javax.jdo</groupId>
            <artifactId>jdo2-api</artifactId>
            <version>${version.org.datanucleus.jdo}</version>
       </dependency>
@@ -358,13 +403,13 @@
         </dependency>
 
         <dependency>
-            <groupId>com.google.appengine</groupId>
+            <groupId>org.apache.geronimo.specs</groupId>
             <artifactId>geronimo-jpa_3.0_spec</artifactId>
             <version>${version.org.datanucleus.jpa.spec}</version>
         </dependency>
 
         <dependency>
-            <groupId>com.google.appengine</groupId>
+            <groupId>org.apache.geronimo.specs</groupId>
             <artifactId>geronimo-jta_1.1_spec</artifactId>
             <version>${version.org.datanucleus.jta}</version>
         </dependency>
@@ -374,6 +419,27 @@
             <artifactId>infinispan-core</artifactId>
             <version>${version.org.infinispan}</version>
             <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.hibernate</groupId>
+            <artifactId>hibernate-core</artifactId>
+            <version>${version.org.hibernate}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.fasterxml</groupId>
+                    <artifactId>classmate</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>javax.transaction</groupId>
+                    <artifactId>jta</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>

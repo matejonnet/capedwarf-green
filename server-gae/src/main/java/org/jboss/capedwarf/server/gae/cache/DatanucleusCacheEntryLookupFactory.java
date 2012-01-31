@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2011, Red Hat Middleware LLC, and individual contributors
+ * Copyright 2011, Red Hat, Inc., and individual contributors
  * as indicated by the @author tags. See the copyright.txt file in the
  * distribution for a full listing of individual contributors.
  *
@@ -20,29 +20,26 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.capedwarf.server.api.quilifiers;
+package org.jboss.capedwarf.server.gae.cache;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-import javax.enterprise.util.Nonbinding;
-import javax.inject.Qualifier;
+import javax.cache.Cache;
+import javax.enterprise.context.ApplicationScoped;
+
+import org.jboss.capedwarf.server.api.cache.CacheEntryLookup;
+import org.jboss.capedwarf.server.api.cache.impl.AbstractCacheEntryLookupFactory;
 
 /**
- * Named.
+ * DataNucleus CELF.
  *
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
-@Qualifier
-@Target({ElementType.TYPE, ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface Name
+@ApplicationScoped
+public class DatanucleusCacheEntryLookupFactory extends AbstractCacheEntryLookupFactory
 {
-   /**
-    * The name.
-    *
-    * @return the name
-    */
-   @Nonbinding String value();
+   protected CacheEntryLookup doCreateCacheEntryLookup(Cache cache)
+   {
+      LongIDCacheEntryLookup lookup = new LongIDCacheEntryLookup();
+      lookup.setCache(cache);
+      return lookup;
+   }
 }
