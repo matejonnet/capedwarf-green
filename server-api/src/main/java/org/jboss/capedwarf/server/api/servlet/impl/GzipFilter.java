@@ -22,6 +22,8 @@
 
 package org.jboss.capedwarf.server.api.servlet.impl;
 
+import java.io.IOException;
+
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
@@ -31,10 +33,6 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import java.io.IOException;
-
-
-import org.jboss.capedwarf.common.Constants;
 import org.jboss.capedwarf.common.serialization.GzipOptionalSerializator;
 
 /**
@@ -55,14 +53,18 @@ public class GzipFilter implements Filter
          HttpServletRequest req = (HttpServletRequest) request;
          HttpServletResponse resp = (HttpServletResponse) response;
 
-         String ignoreGzipHeader = req.getHeader(Constants.IGNORE_GZIP);
-         boolean ignoreGzip = Boolean.parseBoolean(ignoreGzipHeader);
-         if (ignoreGzip)
+         String contentEncodingHeader = req.getHeader("Content-Encoding");
+         boolean gzipped = false;
+         if (contentEncodingHeader != null) {
+             gzipped = contentEncodingHeader.equals("gzip");
+         }
+
+         if (!gzipped)
          {
             GzipOptionalSerializator.disableGzip();
             try
             {
-               chain.doFilter(req, resp);   
+               chain.doFilter(req, resp);
             }
             finally
             {

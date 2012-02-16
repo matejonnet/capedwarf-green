@@ -53,11 +53,11 @@ public class StatusInfo implements JSONAware, Serializable
 
    public void readJSONObject(JSONObject json) throws JSONException
    {
-      Status tmp = JSONUtils.readEnum(json, "status", null, Status.values());
-      if (tmp == null)
-         throw new IllegalArgumentException("Null status, wrong ctor usage?");
+      String statusStr = json.optString("status");
+      if ("".equals(statusStr))
+          throw new IllegalArgumentException("Null status, wrong ctor usage?");
 
-      status = tmp;
+      status = Status.valueOf(statusStr);
       id = json.optLong("id");
       timestamp = json.optLong("timestamp");
    }
@@ -94,6 +94,7 @@ public class StatusInfo implements JSONAware, Serializable
       this.timestamp = timestamp;
    }
 
+   @Override
    public String toString()
    {
       return "status: " + status + ", id = " + id;

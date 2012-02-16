@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
+
 import javax.validation.constraints.Size;
 
 import org.apache.http.Header;
@@ -74,7 +75,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
    private Map<String, QueryInfo> queryCache = new HashMap<String, QueryInfo>();
 
    /** The environment */
-   private volatile Environment env;   
+   private volatile Environment env;
 
    private Configuration config;
 
@@ -205,6 +206,9 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          final ResultProducer rp;
          if (query.jsonAware)
          {
+            HttpHeaders.addHeader("Content-Type", "application/json");
+            HttpHeaders.addHeader("Accept", "application/json");
+
             final List<JSONAware> toJSON = new ArrayList<JSONAware>();
             for (Object arg : args)
             {
@@ -450,10 +454,10 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
          httppost.addHeader(Constants.CLIENT_TOKEN, token);
       }
 
-      // disable gzip
-      if (GzipOptionalSerializator.isGzipDisabled())
+      // enable gzip
+      if (!GzipOptionalSerializator.isGzipDisabled())
       {
-         httppost.addHeader(Constants.IGNORE_GZIP, Boolean.TRUE.toString());
+          httppost.addHeader("Content-Encoding", "gzip");
       }
 
       Result result = new Result();
@@ -578,6 +582,8 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
                }
                else
                {
+                  if (i == 0) //append ? on the beginning of QS
+                     builder.append("?");
                   for (Annotation a : ppa)
                   {
                      if (a instanceof QueryParameter)
@@ -795,7 +801,7 @@ public class ServerProxyHandler implements ServerProxyInvocationHandler
       private InputStream stream;
       private long executionTime;
       private long contentLength = -1;
-      
+
       private Result()
       {
          executionTime = System.currentTimeMillis();
