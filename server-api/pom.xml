@@ -80,20 +80,21 @@
        <artifactId>json</artifactId>
     </dependency>
 
-       <dependency>
+    <dependency>
            <groupId>jcache</groupId>
            <artifactId>jcache</artifactId>
-       </dependency>
+    </dependency>
+
+     <dependency>
+        <groupId>com.octo.captcha</groupId>
+        <artifactId>jcaptcha</artifactId>
+        <version>1.0</version>
+     </dependency>
 
        <dependency>
-           <groupId>com.octo.captcha</groupId>
-           <artifactId>jcaptcha-all</artifactId>
-       </dependency>
-
-        <dependency>
           <groupId>org.gatein.captcha</groupId>
           <artifactId>simplecaptcha</artifactId>
-        </dependency>
+       </dependency>
 
        <dependency>
            <groupId>net.tanesha.recaptcha4j</groupId>
